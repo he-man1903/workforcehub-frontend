@@ -1,0 +1,24 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'workforce-gateway'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['workforce-gateway:8080']
+
+  - job_name: 'workforce-upload-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['workforce-upload-service:8081']
+
+  - job_name: 'workforce-processing-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['workforce-processing-service:8082']
+
+  - job_name: 'workforce-query-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['workforce-query-service:8083']

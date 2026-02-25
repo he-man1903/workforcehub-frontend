@@ -1,0 +1,46 @@
+# Ignore build artifacts and dependencies
+/workforcehub-frontend/node_modules/
+/workforcehub-frontend/dist/
+/workforcehub-frontend/.vite/
+/workforcehub-frontend/.env.local
+
+# Java build output
+**/build/
+**/bin/
+**/out/
+**/target/
+
+# IDE files
+*.iml
+*.ipr
+*.iws
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Gradle files
+.gradle/
+
+# Maven files
+pom.xml.tag
+pom.xml.releaseBackup
+
+# Log files
+*.log
+
+# Temporary files
+*.tmp
+*.swp
+
+# Ignore the compiled class files
+**/*.class
+
+# Ignore generated sources
+**/generated-sources/
+**/generated-test-sources/
+
+# Misc
+.env

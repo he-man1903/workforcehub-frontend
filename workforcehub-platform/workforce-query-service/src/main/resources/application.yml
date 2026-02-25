@@ -1,0 +1,63 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: workforce-query-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/workforcehub
+    username: ${DB_USERNAME:workforcehub}
+    password: ${DB_PASSWORD:workforcehub}
+    hikari:
+      maximum-pool-size: 15
+      minimum-idle: 3
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          min-idle: 2
+  cache:
+    type: redis
+    redis:
+      time-to-live: 300000   # 5 minutes
+      cache-null-values: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  level:
+    root: INFO
+    com.workforce: DEBUG
+
+# ── JWT validation (must match auth-service exactly) ─────────────────────────
+jwt:
+  secret: ${JWT_SECRET:changeme-use-a-32-char-secret-in-prod!}
+  issuer: ${JWT_ISSUER:workforcehub}

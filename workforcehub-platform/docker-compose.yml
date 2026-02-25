@@ -1,0 +1,208 @@
+version: "3.9"
+
+# ══════════════════════════════════════════════════════════════
+#  WorkforceHub — Full SaaS Stack with Google OAuth2
+#  Access points after docker-compose up --build:
+#    API Gateway:   http://localhost:8080
+#    Auth Service:  http://localhost:8080/auth/google (via gateway)
+#    Swagger (auth): http://localhost:8084/swagger-ui.html
+#    Prometheus:    http://localhost:9090
+#    Grafana:       http://localhost:3000  (admin/admin)
+# ══════════════════════════════════════════════════════════════
+
+x-common-env: &common-env
+  DB_USERNAME: workforcehub
+  DB_PASSWORD: workforcehub
+  SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/workforcehub
+  JWT_SECRET: ${JWT_SECRET:-changeme-use-a-real-32-char-secret-here!}
+  JWT_ISSUER: workforcehub
+
+services:
+
+  # ── Infrastructure ───────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: workforcehub-postgres
+    environment:
+      POSTGRES_DB: workforcehub
+      POSTGRES_USER: workforcehub
+      POSTGRES_PASSWORD: workforcehub
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U workforcehub" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: workforcehub-redis
+    command: redis-server --requirepass redispassword
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "-a", "redispassword", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    container_name: workforcehub-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: workforcehub-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: [ "CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092" ]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: workforcehub-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: workforcehub-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+  # ── Application Services ─────────────────────────────────────
+
+  workforce-auth-service:
+    build:
+      context: .
+      dockerfile: workforce-auth-service/Dockerfile
+    container_name: workforce-auth-service
+    # Auth service IS publicly accessible via the gateway, but we also expose
+    # port 8084 locally for Swagger UI during development.
+    expose:
+      - "8084"
+    ports:
+      - "8084:8084" # Remove in production; access via gateway only
+    environment:
+      <<: *common-env
+      REDIS_HOST: redis
+      REDIS_PASSWORD: redispassword
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_ALLOWED_DOMAINS: ${GOOGLE_ALLOWED_DOMAINS:-}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      GATEWAY_PUBLIC_URL: ${GATEWAY_PUBLIC_URL:-http://localhost:8080}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  workforce-gateway:
+    build:
+      context: .
+      dockerfile: workforce-gateway/Dockerfile
+    container_name: workforce-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      <<: *common-env
+      REDIS_HOST: redis
+      REDIS_PASSWORD: redispassword
+      AUTH_SERVICE_URL: http://workforce-auth-service:8084
+      UPLOAD_SERVICE_URL: http://workforce-upload-service:8081
+      QUERY_SERVICE_URL: http://workforce-query-service:8083
+      PROCESSING_SERVICE_URL: http://workforce-processing-service:8082
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+    depends_on:
+      redis:
+        condition: service_healthy
+      workforce-auth-service:
+        condition: service_healthy
+
+  workforce-upload-service:
+    build:
+      context: .
+      dockerfile: workforce-upload-service/Dockerfile
+    container_name: workforce-upload-service
+    expose:
+      - "8081"
+    environment:
+      <<: *common-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  workforce-processing-service:
+    build:
+      context: .
+      dockerfile: workforce-processing-service/Dockerfile
+    container_name: workforce-processing-service
+    expose:
+      - "8082"
+    environment:
+      <<: *common-env
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  workforce-query-service:
+    build:
+      context: .
+      dockerfile: workforce-query-service/Dockerfile
+    container_name: workforce-query-service
+    expose:
+      - "8083"
+    environment:
+      <<: *common-env
+      REDIS_HOST: redis
+      REDIS_PASSWORD: redispassword
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  redis-data:
+  prometheus-data:
+  grafana-data:

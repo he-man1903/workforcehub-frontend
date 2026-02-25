@@ -1,0 +1,52 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: workforce-upload-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/workforcehub
+    username: ${DB_USERNAME:workforcehub}
+    password: ${DB_PASSWORD:workforcehub}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 50MB
+      max-request-size: 55MB
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  level:
+    root: INFO
+    com.workforce: DEBUG
+
+# ── JWT validation (must match auth-service exactly) ─────────────────────────
+jwt:
+  secret: ${JWT_SECRET:changeme-use-a-32-char-secret-in-prod!}
+  issuer: ${JWT_ISSUER:workforcehub}
