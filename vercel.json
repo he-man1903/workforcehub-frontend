@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "workforcehub-frontend/package.json",
+      "use": "@vercel/static-build",
+      "config": { "distDir": "workforcehub-frontend/dist" }
+    }
+  ],
+  "routes": [
+    { "src": "\/(.*)", "dest": "/workforcehub-frontend/dist/index.html" }
+  ]
+}
